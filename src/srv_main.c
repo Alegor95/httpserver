@@ -16,7 +16,7 @@ int main(int argc, char* argv[]){
 	//iterators
 	int i = 0;
 	//default port
-	char port[4] = "8000";
+	char port[4] = "8080";
 	for (i = 1; i < argc; i++){
 		if (strcmp(argv[i], "-p")){
 			if (i < argc){
