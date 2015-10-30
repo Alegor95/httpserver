@@ -9,8 +9,17 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <pthread.h>
 //Consts
 #define MAX_CONNECTIONS	10
+
+void* threadProcessor(void *arg){
+	int connDescr = *((int *) arg);
+	char buffer[256];
+        bzero(buffer, sizeof(buffer));
+        read(connDescr,buffer, sizeof(buffer));
+        printf("%s", buffer);
+}
 
 int main(int argc, char* argv[]){
 	//iterators
@@ -44,14 +53,13 @@ int main(int argc, char* argv[]){
 	bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
 	//Start listening
 	listen(sockfd, MAX_CONNECTIONS);
-	//Accept connection
-	int connfd = accept(sockfd, (struct sockaddr*)NULL, NULL);
-	//Read info to bufer
-	char buffer[256];
-	bzero(buffer, sizeof(buffer));
-	read(connfd,buffer, sizeof(buffer));
-	printf("%s", buffer);
-	//Close connection
-	close(connfd);
+	while(1){
+		//Accept connection
+		int connfd = accept(sockfd, (struct sockaddr*)NULL, NULL);
+		//Read info to bufer
+		threadProcessor(&connfd);
+		//Close connection
+		close(connfd);
+	}
 	return 0;
 }
