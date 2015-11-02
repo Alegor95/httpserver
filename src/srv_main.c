@@ -15,6 +15,9 @@
 #define WORKER_COUNT 10
 #define SERVER_NAME "Custom Server"
 #define PROTOCOL "HTTP/1.1"
+#define HOME_DIR "www"
+//Home directory
+char* homeDirectory;
 //Thread workers pool
 pthread_t workersPool[WORKER_COUNT];
 //Connections
@@ -22,13 +25,21 @@ int connectionStack[MAX_CONNECTIONS];
 int stackPointer = 0;
 pthread_mutex_t connectionStackLocker;
 
-char* generateResponse(char *content){
-	char headers[1000];
-	sprintf(headers, "%s 200 OK\r\nServer: %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
-	PROTOCOL,SERVER_NAME,(int)strlen(content));
-	char *result = malloc(strlen(content)+strlen(headers)+1);
+char* generate404Response(){
+	char headers[200];
+	sprintf(headers, "%s 404 Not Found\r\nServer: %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
+	PROTOCOL, SERVER_NAME, 0);
+	char *result = malloc(strlen(headers)+1);
 	strcpy(result, headers);
-    	strcat(result, content);
+	return result;
+}
+
+char* generateOKResponse(int contentSize){
+	char headers[200];
+	sprintf(headers, "%s 200 OK\r\nServer: %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
+	PROTOCOL,SERVER_NAME, contentSize);
+	char *result = malloc(strlen(headers)+1);
+	strcpy(result, headers);
     	return result;
 }
 
@@ -55,21 +66,45 @@ void connectionProcessing(int connDescr){
 			do {
 				url[ptr-strlen(requestType)-1]=buffer[ptr];
 			} while (buffer[++ptr]!=' ');
-			printf("Request: %s URL: %s", requestType, url);
 		} else {
 			//Other parameters
-			printf("%s", buffer);
+//			printf("%s", buffer);
 		}
 		nowLine++;
 		if (strcmp(buffer, "\r\n") == 0){
 			break;
 		}
 	}
-	//
-	char *content = "Test answer\n";
-	char *response = generateResponse(content);
-	fprintf(conn,"%s", response);
+	//Add home directory to URL
+	char *fileName = malloc(strlen(url)+strlen(homeDirectory)+1);
+	strcpy(fileName, homeDirectory);
+	strcat(fileName, url);
+	//Try to open file
+	if (!strcmp(requestType, "GET")){
+		if (fileName[strlen(fileName) - 1] == '/'){
+			//Directory request - add index.html
+			strcat(fileName, "index.html");
+		}
+		FILE *respContent = fopen(fileName, "rb");
+		if (respContent != NULL){
+			fseek(respContent, 0, SEEK_END);
+			int contentSize = ftell(respContent);
+			rewind(respContent);
+			char *response = generateOKResponse(contentSize);
+			fprintf(conn,"%s", response);
+			char respBuffer[255];
+			while (fgets(respBuffer, sizeof(respBuffer), respContent)){
+				fprintf(conn, "%s", respBuffer);
+			}
+			fclose(respContent);
+		} else {
+			char *response = generate404Response();
+			fprintf(conn, "%s", response);
+		}
+	}
 	fclose(conn);
+	free(fileName);
+	free(url);
 }
 
 void* workerMethod(void *arg){
@@ -117,20 +152,31 @@ int main(int argc, char* argv[]){
 	for (i = 0; i < WORKER_COUNT; i++){
 		pthread_create(&workersPool[i], NULL, &workerMethod, NULL);
 	}
-	//default port
+	//default values
 	char port[4] = "8080";
+	homeDirectory = malloc(strlen(HOME_DIR));
+	strcpy(homeDirectory, HOME_DIR);
 	for (i = 1; i < argc; i++){
 		if (!strcmp(argv[i], "-p")){
 			if (i + 1 < argc){
 				strcpy(port, argv[i+1]);
-				printf("Set port to %s", port);
+				printf("\nSet port to %s\n", port);
 			} else {
 				printf("\nMissing argument for -p\n");
+			}
+		}
+		if (!strcmp(argv[i], "-h")){
+			if (i+1<argc){
+				strcpy(homeDirectory, argv[i+1]);
+				printf("\nSet home directory to %s\n", homeDirectory);
+			} else {
+				printf("\nMissing argument for -h\n");
 			}
 		}
 	}
 	//Parse arguments
 	printf("\nStart server on port %s...\n", port);
+	printf("\nHome directory is %s\n", homeDirectory);
 	//Socket binding
 	int sockfd;
 	if ((sockfd  = socket(AF_INET, SOCK_STREAM, 0)) < 0){
