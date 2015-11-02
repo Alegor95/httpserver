@@ -13,6 +13,7 @@
 //Consts
 #define MAX_CONNECTIONS	10
 #define WORKER_COUNT 10
+#define DEFAULT_CONTENT_TYPE "text/html"
 #define SERVER_NAME "Custom Server"
 #define PROTOCOL "HTTP/1.1"
 #define HOME_DIR "www"
@@ -29,15 +30,30 @@ char* generate404Response(){
 	char headers[200];
 	sprintf(headers, "%s 404 Not Found\r\nServer: %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
 	PROTOCOL, SERVER_NAME, 0);
-	char *result = malloc(strlen(headers)+1);
+	char *result = malloc(strlen(headers));
 	strcpy(result, headers);
 	return result;
 }
 
-char* generateOKResponse(int contentSize){
+char* getMIME(char* fileName){
+	char command[50];
+        sprintf(command, "file --mime-type -b %s", fileName);
+        FILE *fp = popen(command, "r");
+        if (fp != NULL){
+                char buffer[200];
+                fgets(buffer, sizeof(buffer), fp);
+                char *result = malloc(strlen(buffer));
+		strcpy(result, buffer);
+		result[strlen(result)-1] = 0;
+		return result;
+        }
+	return DEFAULT_CONTENT_TYPE;
+}
+
+char* generateOKResponse(int contentSize, char* contentType){
 	char headers[200];
-	sprintf(headers, "%s 200 OK\r\nServer: %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
-	PROTOCOL,SERVER_NAME, contentSize);
+	sprintf(headers, "%s 200 OK\r\nServer: %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
+	PROTOCOL,SERVER_NAME, contentType, contentSize);
 	char *result = malloc(strlen(headers)+1);
 	strcpy(result, headers);
     	return result;
@@ -90,12 +106,12 @@ void connectionProcessing(int connDescr){
 			fseek(respContent, 0, SEEK_END);
 			int contentSize = ftell(respContent);
 			rewind(respContent);
-			char *response = generateOKResponse(contentSize);
-			fprintf(conn,"%s", response);
-			char respBuffer[255];
-			while (fgets(respBuffer, sizeof(respBuffer), respContent)){
-				fprintf(conn, "%s", respBuffer);
-			}
+			char *response = generateOKResponse(contentSize, getMIME(fileName));
+			fputs(response, conn);
+			char *respBuffer;
+			respBuffer = (char*) malloc (sizeof(char)*contentSize);
+		        size_t result = fread(respBuffer, 1, contentSize, respContent);
+			fwrite(respBuffer, 1, contentSize, conn);
 			fclose(respContent);
 		} else {
 			char *response = generate404Response();
