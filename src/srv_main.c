@@ -17,6 +17,7 @@
 #define SERVER_NAME "Custom Server"
 #define PROTOCOL "HTTP/1.1"
 #define HOME_DIR "www"
+#define DEFAULT_FILE "index.html"
 //Home directory
 char* homeDirectory;
 //Thread workers pool
@@ -30,7 +31,7 @@ char* generate404Response(){
 	char headers[200];
 	sprintf(headers, "%s 404 Not Found\r\nServer: %s\r\nContent-Type: text/html\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
 	PROTOCOL, SERVER_NAME, 0);
-	char *result = malloc(strlen(headers));
+	char *result = malloc(strlen(headers)*sizeof(char)+1);
 	strcpy(result, headers);
 	return result;
 }
@@ -42,7 +43,7 @@ char* getMIME(char* fileName){
         if (fp != NULL){
                 char buffer[200];
                 fgets(buffer, sizeof(buffer), fp);
-                char *result = malloc(strlen(buffer));
+                char *result = malloc(strlen(buffer)*sizeof(char)+1);
 		strcpy(result, buffer);
 		result[strlen(result)-1] = 0;
 		return result;
@@ -54,7 +55,7 @@ char* generateOKResponse(int contentSize, char* contentType){
 	char headers[200];
 	sprintf(headers, "%s 200 OK\r\nServer: %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
 	PROTOCOL,SERVER_NAME, contentType, contentSize);
-	char *result = malloc(strlen(headers)+1);
+	char *result = malloc(strlen(headers)*sizeof(char)+1);
 	strcpy(result, headers);
     	return result;
 }
@@ -75,13 +76,16 @@ void connectionProcessing(int connDescr){
 			do {
 				requestType[ptr]=buffer[ptr];
 			} while (buffer[++ptr]!=' ');
+			requestType[ptr] = 0;
 			//Parse url
 			int urlLength = (int)strlen(buffer)-(int)strlen(requestType)-(int)strlen(PROTOCOL)-4;
-			url = malloc((size_t)urlLength);
+			int urlPtr = 0;
+			url = (char*)malloc((size_t)(urlLength*sizeof(char))+1);
 			ptr++;
 			do {
-				url[ptr-strlen(requestType)-1]=buffer[ptr];
+				url[urlPtr++]=buffer[ptr];
 			} while (buffer[++ptr]!=' ');
+			url[urlPtr] = 0;
 		} else {
 			//Other parameters
 //			printf("%s", buffer);
@@ -92,14 +96,15 @@ void connectionProcessing(int connDescr){
 		}
 	}
 	//Add home directory to URL
-	char *fileName = malloc(strlen(url)+strlen(homeDirectory)+1);
+	int fileLen = (int)(strlen(url)+strlen(homeDirectory)+strlen(DEFAULT_FILE));
+	char *fileName = malloc(fileLen*sizeof(char)+1);
 	strcpy(fileName, homeDirectory);
 	strcat(fileName, url);
 	//Try to open file
 	if (!strcmp(requestType, "GET")){
 		if (fileName[strlen(fileName) - 1] == '/'){
 			//Directory request - add index.html
-			strcat(fileName, "index.html");
+			strcat(fileName, DEFAULT_FILE);
 		}
 		FILE *respContent = fopen(fileName, "rb");
 		if (respContent != NULL){
@@ -112,6 +117,7 @@ void connectionProcessing(int connDescr){
 			respBuffer = (char*) malloc (sizeof(char)*contentSize);
 		        size_t result = fread(respBuffer, 1, contentSize, respContent);
 			fwrite(respBuffer, 1, contentSize, conn);
+			free(respBuffer);
 			fclose(respContent);
 		} else {
 			char *response = generate404Response();
