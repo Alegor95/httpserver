@@ -63,28 +63,37 @@ char* generateOKResponse(int contentSize, char* contentType){
 void connectionProcessing(int connDescr){
 	char buffer[256];
         bzero(buffer, sizeof(buffer));
-	//Parse request
 	FILE *conn = fdopen(connDescr, "r+");
 	char requestType[5];
 	char *url;
 	int nowLine = 0, ptr = 0, emptyStr = 0;
-        while(1){
+	//Parse request
+	printf("%s\n", "Parse request");
+  while(1){
 		fgets(buffer, sizeof(buffer), conn);
+		if (strlen(buffer) == 0) continue;
 		ptr = 0;
 		if (nowLine == 0){
+			printf("%s %s\n", "Parse request type", buffer);
 			//Parse request type
 			do {
 				requestType[ptr]=buffer[ptr];
 			} while (buffer[++ptr]!=' ');
 			requestType[ptr] = 0;
+			printf("%s\n", "Parse url");
 			//Parse url
+			printf("%s\n", "Count url length");
 			int urlLength = (int)strlen(buffer)-(int)strlen(requestType)-(int)strlen(PROTOCOL)-4;
 			int urlPtr = 0;
 			url = (char*)malloc((size_t)(urlLength*sizeof(char))+1);
 			ptr++;
+			printf("%s\n", "Copy url");
 			do {
 				url[urlPtr++]=buffer[ptr];
+				if (urlLength - 1 < urlPtr) break;
+				if (ptr - 2 > strlen(buffer)) break;
 			} while (buffer[++ptr]!=' ');
+			printf("%s %s\n", "Url copied, finish str", url);
 			url[urlPtr] = 0;
 		} else {
 			//Other parameters
