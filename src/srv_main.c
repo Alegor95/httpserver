@@ -26,6 +26,7 @@ pthread_t workersPool[WORKER_COUNT];
 int connectionStack[MAX_CONNECTIONS];
 int stackPointer = 0;
 pthread_mutex_t connectionStackLocker;
+pthread_cond_t anyConnection = PTHREAD_COND_INITIALIZER;
 
 char* generate404Response(){
 	char headers[200];
@@ -67,37 +68,28 @@ void connectionProcessing(int connDescr){
 	char requestType[5];
 	char *url;
 	int nowLine = 0, ptr = 0, emptyStr = 0;
-	//Parse request
-	printf("%s\n", "Parse request");
   while(1){
 		fgets(buffer, sizeof(buffer), conn);
-		if (strlen(buffer) == 0) continue;
+		if (strlen(buffer) == 0 && nowLine == 0) return;
 		ptr = 0;
 		if (nowLine == 0){
-			printf("%s %s\n", "Parse request type", buffer);
 			//Parse request type
 			do {
 				requestType[ptr]=buffer[ptr];
 			} while (buffer[++ptr]!=' ');
 			requestType[ptr] = 0;
-			printf("%s\n", "Parse url");
 			//Parse url
-			printf("%s\n", "Count url length");
 			int urlLength = (int)strlen(buffer)-(int)strlen(requestType)-(int)strlen(PROTOCOL)-4;
 			int urlPtr = 0;
 			url = (char*)malloc((size_t)(urlLength*sizeof(char))+1);
 			ptr++;
-			printf("%s\n", "Copy url");
 			do {
 				url[urlPtr++]=buffer[ptr];
 				if (urlLength - 1 < urlPtr) break;
 				if (ptr - 2 > strlen(buffer)) break;
 			} while (buffer[++ptr]!=' ');
-			printf("%s %s\n", "Url copied, finish str", url);
 			url[urlPtr] = 0;
 		} else {
-			//Other parameters
-//			printf("%s", buffer);
 		}
 		nowLine++;
 		if (strcmp(buffer, "\r\n") == 0){
@@ -124,7 +116,7 @@ void connectionProcessing(int connDescr){
 			fputs(response, conn);
 			char *respBuffer;
 			respBuffer = (char*) malloc (sizeof(char)*contentSize);
-		        size_t result = fread(respBuffer, 1, contentSize, respContent);
+      size_t result = fread(respBuffer, 1, contentSize, respContent);
 			fwrite(respBuffer, 1, contentSize, conn);
 			free(respBuffer);
 			fclose(respContent);
@@ -145,6 +137,7 @@ void* workerMethod(void *arg){
 		currentTask=0;
 		//Check task
 		pthread_mutex_lock(&connectionStackLocker);
+		pthread_cond_wait(&anyConnection, &connectionStackLocker);
 		if (stackPointer){
 			currentTask = connectionStack[--stackPointer];
 		}
@@ -165,10 +158,12 @@ void* socketProcessor(void *arg){
         while(1){
                 //Accept connection
                 int connfd = accept(socketDescr, (struct sockaddr*)NULL, NULL);
+								if (stackPointer == MAX_CONNECTIONS) continue;
                 //Put connection to task
-		pthread_mutex_lock(&connectionStackLocker);
+								pthread_mutex_lock(&connectionStackLocker);
                 connectionStack[stackPointer++] = connfd;
-		pthread_mutex_unlock(&connectionStackLocker);
+								pthread_cond_signal(&anyConnection);
+								pthread_mutex_unlock(&connectionStackLocker);
         }
 }
 
